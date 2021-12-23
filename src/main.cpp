@@ -1,6 +1,6 @@
-//Einfacher Code mit Blink durch millis() und Serieller Ausgabe
-//Simple "Vorlage"
-//Tests mit Github
+//Neuprogrammierung nach Totalverlust
+//Thermometer mit DS18B20 Sensor und VFDisplay
+//VFD angesteuert mittels 74HC595 und UDN2981
 
 #include <Arduino.h>
 
