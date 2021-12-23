@@ -15,8 +15,9 @@ unsigned long keepHmillis;
 void noDelayBlink(byte pin, int blinkZeit );
 void serialMsg(int msgZeit);
 void keepPinHighForTime(int keepHTime, int pin);
-void simplePWM(int pin, int cycleOn, int cycleFull);
 
+void pwmInit(void);
+void pwmStop(void);
 //////////////////////////////////////////////////////
 // Setup fuer die LED und Serielle Ausgabe
 void setup() {
@@ -78,18 +79,25 @@ void keepPinHighForTime(int keepHTime, int pin) {
   }
 }
 
-void simplePWM(int pin, int cycleOn, int cycleFull){
-  int pulsingPin = pin;
-  static unsigned long previousMicros;
-  if ((micros() - previousMicros) < cycleFull) {
-    if ((micros() - previousMicros) < cycleOn) {
-      digitalWrite(pulsingPin, LOW);
-    }
-    else {
-      digitalWrite(pulsingPin, HIGH);
-    }
-  }
-  else {
-    previousMicros = micros();
-  }
+void pwmInit(void) {
+  //Timer2 setup
+  //TCCR2A = 0; //Timer/Counter Control Register A
+  TCCR2A |= (1<<COM2A1) | (1<<COM2A0) | (1<<COM2B1) | (0<<COM2B0);
+  TCCR2A |= (1<<WGM21) | (1<<WGM20);
+  //TCCR2B = 0; //Timer/Counter Control Register B
+  TCCR2B |= (0<<CS22) | (1<<CS21) | (0<<CS20); //0 1 0 entspricht 1 zu 8
+  TCCR2B |= (0<<WGM22);
+  //TCNT2 = 0; // Timer/Counter Register: The Timer/Counter Register gives direct access, both for read and write operations, to theTimer/Counter unit 8-bit counte
+  //OCR2A = 0; //Output Compare Register A
+  OCR2A = 13;
+  //OCR2B = 0; //Output Compare Register B
+  OCR2B = 242;
+  //TIMSK2 = 0; // Timer/Counter Interrupt Mask Registe
+  //TIFR2 = 0; //  Timer/Counter 0 Interrupt Flag Registe
+  //Ende Timer2 setup
+}
+
+void pwmStop(void) {
+  TCCR2A &= (0<<COM2A1) | (0<<COM2A0) | (0<<COM2B1) | (0<<COM2B0);
+  TCCR2B &= ~((1<<CS22)|(1<<CS21)|(1<<CS20));
 }
