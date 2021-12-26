@@ -4,45 +4,105 @@
 
 #include <Arduino.h>
 
+// Include the libraries we need
+#include <OneWire.h>
+#include <DallasTemperature.h>
+
+OneWire oneWire(2); //OneWire an Pin 2
+// Pass our oneWire reference to Dallas Temperature. 
+DallasTemperature DS18B20(&oneWire);
+
 //variables declarations
-int toggleInterval = 200; //Zeit, die die LED an bzw aus ist in Millisekunden
-int msgInterval = 1000;
+int latchPin = 7;  // RCLK (Register Clock / Latch) Pin des 74HC595, der die Daten aus dem Storage an den Ausgang gibt
+int clockPin = 8; // SRCLK (Shit Register Clock) Pin, mit dessen Flanke die Daten in das Register geschiftet werden
+int dataPin = 5;  // SER (Serial input) Pin des 74HC595, der die Daten aufnimmt
+int enablePin = 6; // EN (LOW active!) der die Ausgaenge des 74HC595 freischaltet
+
+int toggleInterval = 800; //Zeit, die die LED an bzw aus ist in Millisekunden
+int msgInterval = 2000;
+int checkTempInt = 300;
+int showTempInt = 800;
+unsigned long showFunInt = 50000;
+int scrollTime = 250;
+
+int tempZehner;
+int tempEiner;
 
 bool keepFlag = 0;
-unsigned long keepHmillis;
+
+unsigned long showFunMillis;
+
+//Array fuer Shiftregister bzw 7-Segment definieren
+//                   abcdefgGitter
+byte ciphArr[19] = {0b00000000, // leer - 0
+                    0b01100001, // 1
+                    0b11011011, // 2
+                    0b11110011, // 3
+                    0b01100111, // 4
+                    0b10110111, // 5
+                    0b10111111, // 6
+                    0b11100001, // 7
+                    0b11111111, // 8
+                    0b11110111, // 9
+                    0b11111101, // 0 - 10
+                    0b11101111, // A - 11
+                    0b10011101, // C - 12
+                    0b10011111, // E - 13
+                    0b10001111, // F - 14
+                    0b01101111, // H - 15
+                    0b00011101, // L - 16
+                    0b00101011, // n - 17
+                    0b11000111  // ° - 18 //19!
+                    };
 
 //functions declarations
-void noDelayBlink(byte pin, int blinkZeit );
-void serialMsg(int msgZeit);
-void keepPinHighForTime(int keepHTime, int pin);
-
+//void noDelayBlink(byte pin, int blinkZeit );
+//void serialMsg(int msgZeit);
+void checkTemp(int checkTime);
+void showTemp(int showTime);
+void putShiftRegister(int li, int re);
+void funLena(void);
 void pwmInit(void);
 void pwmStop(void);
 //////////////////////////////////////////////////////
 // Setup fuer die LED und Serielle Ausgabe
 void setup() {
   Serial.begin(9600);
-  pinMode(LED_BUILTIN, OUTPUT); //LED_BUILTIN ist keyword fÃƒÂ¼r die LED auf dem Board, bei Arduino an Pin 13
-  pinMode(12, OUTPUT);
-  pinMode(11, OUTPUT);
-  pinMode(10, OUTPUT);
-  pinMode(9, OUTPUT);
-  pinMode(8, INPUT_PULLUP);
+  pinMode(LED_BUILTIN, OUTPUT); //LED_BUILTIN ist keyword fuerr die LED auf dem Board, bei Arduino an Pin 13
+  digitalWrite(LED_BUILTIN, LOW);
+  pinMode(11, OUTPUT); //PWM Kanal 1
+  pinMode(3, OUTPUT); //PWM Kanal 2
+  pwmStop();
+  pwmInit();
+
+  pinMode(2, OUTPUT); //OneWire BUS - DS18B20
+  DS18B20.begin();
+
+  pinMode(latchPin, OUTPUT);
+  pinMode(dataPin, OUTPUT);  
+  pinMode(clockPin, OUTPUT);
+  pinMode(enablePin, OUTPUT);
+  digitalWrite(enablePin, LOW); //LOW active!
+
 }
 
 //////////////////////////////////////////////////////
 // the loop function runs over and over again forever
 void loop() {
-  noDelayBlink(LED_BUILTIN, toggleInterval);
-  serialMsg(msgInterval);
-  keepPinHighForTime(200, 12);
-  if (digitalRead(8) == HIGH) {
-    //Serial.println("8 ist HIGH");
-    keepFlag = 0;
+  //serialMsg(msgInterval);
+  
+  checkTemp(checkTempInt);
+  if (millis() - showFunMillis > showFunInt) {
+    showFunMillis = millis();
+    funLena();
+  }
+  else {
+    showTemp(showTempInt);
   }
 }
 //////////////////////////////////////////////////////
 //////////////////////////////////////////////////////
+/*
 void noDelayBlink(byte pin, int blinkZeit ) {
   static unsigned long blinkMillis;
   if (millis() - blinkMillis > blinkZeit) {
@@ -61,21 +121,75 @@ void serialMsg(int msgZeit) {
     Serial.println("----- ----- ----- ----- -----");
   }
 }
+*/
 
-void keepPinHighForTime(int keepHTime, int pin) {
-  static bool doneFlag;
-  if (keepFlag == 0) {
-    keepHmillis = millis();
-    doneFlag = 0;
-    keepFlag = 1;
-    //Serial.println("SET");
+void putShiftRegister(int li, int re) {
+  digitalWrite(latchPin, LOW);
+  shiftOut(dataPin, clockPin, MSBFIRST, li);
+  shiftOut(dataPin, clockPin, MSBFIRST, re);
+  digitalWrite(latchPin, HIGH);
+}
+
+void funLena(void) {
+  putShiftRegister(ciphArr[0],ciphArr[0]);
+  delay(scrollTime);
+  digitalWrite(latchPin, LOW);
+  shiftOut(dataPin,clockPin,MSBFIRST,ciphArr[16]);
+  digitalWrite(latchPin, HIGH);
+  delay(scrollTime);
+  digitalWrite(enablePin, LOW);
+  digitalWrite(latchPin, LOW);
+  shiftOut(dataPin,clockPin,MSBFIRST,ciphArr[13]);
+  digitalWrite(latchPin, HIGH);
+  delay(scrollTime);
+  digitalWrite(latchPin, LOW);
+  shiftOut(dataPin,clockPin,MSBFIRST,ciphArr[17]);
+  digitalWrite(latchPin, HIGH);
+  delay(scrollTime);
+  digitalWrite(latchPin, LOW);
+  shiftOut(dataPin,clockPin,MSBFIRST,ciphArr[11]);
+  digitalWrite(latchPin, HIGH);
+  delay(scrollTime);
+  digitalWrite(latchPin, LOW);
+  shiftOut(dataPin,clockPin,MSBFIRST,ciphArr[0]);
+  digitalWrite(latchPin, HIGH);
+  delay(scrollTime);
+  digitalWrite(latchPin, LOW);
+  shiftOut(dataPin,clockPin,MSBFIRST,ciphArr[0]);
+  digitalWrite(latchPin, HIGH);
+  delay(scrollTime);
+  digitalWrite(latchPin, LOW);
+  shiftOut(dataPin,clockPin,MSBFIRST,ciphArr[tempZehner]);
+  digitalWrite(latchPin, HIGH);
+  delay(scrollTime);
+  digitalWrite(latchPin, LOW);
+  shiftOut(dataPin,clockPin,MSBFIRST,ciphArr[tempEiner]);
+  digitalWrite(latchPin, HIGH);
+  //delay(200);
+}
+
+void showTemp(int showTime) {
+  static unsigned long checkMillis; 
+  if (millis() - checkMillis > showTime) {
+    checkMillis = millis();
+    if (tempEiner == 0 && tempZehner >= 1) {
+        tempEiner = 10;
+    }
+    putShiftRegister(ciphArr[tempZehner],ciphArr[tempEiner]);
   }
-  if (millis() - keepHmillis < keepHTime && doneFlag == 0) {
-    digitalWrite(pin, HIGH);
-  }
-  else {//if (millis() - keepHmillis > keepHTime ODER done Flag == 1)
-    digitalWrite(pin, LOW);
-    doneFlag = 1;
+}
+
+void checkTemp(int checkTime) {
+  static unsigned long checkMillis; 
+  if (millis() - checkMillis > checkTime) {
+    checkMillis = millis();
+    DS18B20.requestTemperatures(); // Send the command to get temperatures
+    float tempC = DS18B20.getTempCByIndex(0);
+    Serial.print("tempC = ");
+    Serial.println(tempC);
+    int ziffern = tempC - 1.2;
+    tempEiner = ziffern % 10;
+    tempZehner = ziffern / 10;
   }
 }
 
